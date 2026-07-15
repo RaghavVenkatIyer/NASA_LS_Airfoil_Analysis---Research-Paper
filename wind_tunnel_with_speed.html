@@ -1,0 +1,258 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Airfoil Wind Tunnel</title>
+    <style>
+        body {
+            margin: 0;
+            padding: 20px;
+            background-color: #111;
+            color: #eee;
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+        }
+        h1 { margin-top: 0; margin-bottom: 10px; }
+        .controls {
+            display: flex;
+            flex-wrap: wrap;
+            justify-content: center;
+            gap: 20px;
+            margin-bottom: 15px;
+            background: #222;
+            padding: 15px 30px;
+            border-radius: 8px;
+            box-shadow: 0 4px 6px rgba(0,0,0,0.3);
+        }
+        .control-group {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+        }
+        .legend {
+            display: flex;
+            gap: 20px;
+            margin-bottom: 15px;
+            background: #222;
+            padding: 10px 25px;
+            border-radius: 8px;
+            font-size: 14px;
+            font-weight: bold;
+        }
+        .legend-item {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+        .color-box {
+            width: 16px;
+            height: 16px;
+            border-radius: 4px;
+        }
+        canvas {
+            background-color: #000;
+            border: 1px solid #333;
+            border-radius: 8px;
+            box-shadow: 0 0 20px rgba(0,0,0,0.5);
+        }
+        label { margin-bottom: 5px; font-weight: bold; }
+    </style>
+</head>
+<body>
+
+    <h1>Interactive Airfoil Wind Tunnel</h1>
+    
+    <div class="legend">
+        <div class="legend-item"><div class="color-box" style="background: hsl(240, 100%, 60%);"></div> Slower Air (Stagnation/Wake)</div>
+        <div class="legend-item"><div class="color-box" style="background: hsl(120, 100%, 60%);"></div> Free-Stream Airflow</div>
+        <div class="legend-item"><div class="color-box" style="background: hsl(0, 100%, 60%);"></div> Faster Air (Accelerated/Lift)</div>
+    </div>
+
+    <div class="controls">
+        <div class="control-group">
+            <label for="thickness">NASA LS Thickness (%)</label>
+            <select id="thickness">
+                <option value="13">LS(1)-0413 (13%)</option>
+                <option value="17" selected>LS(1)-0417 (17%)</option>
+                <option value="21">LS(1)-0421 (21%)</option>
+            </select>
+        </div>
+        <div class="control-group">
+            <label for="aoa">Angle of Attack: <span id="aoa-val">0</span>°</label>
+            <input type="range" id="aoa" min="-10" max="30" value="0">
+        </div>
+        <div class="control-group">
+            <label for="windSpeed">Wind Speed: <span id="windSpeed-val">5</span></label>
+            <input type="range" id="windSpeed" min="2" max="15" value="5" step="1">
+        </div>
+    </div>
+
+    <canvas id="windTunnel" width="1000" height="500"></canvas>
+
+    <script>
+        const canvas = document.getElementById('windTunnel');
+        const ctx = canvas.getContext('2d');
+        const aoaInput = document.getElementById('aoa');
+        const aoaDisplay = document.getElementById('aoa-val');
+        const thicknessInput = document.getElementById('thickness');
+        const windSpeedInput = document.getElementById('windSpeed');
+        const windSpeedDisplay = document.getElementById('windSpeed-val');
+
+        let particles = [];
+        const numParticles = 800;
+
+        class Particle {
+            constructor() {
+                this.reset(true);
+            }
+
+            reset(randomX = false) {
+                const windSpeed = parseFloat(windSpeedInput.value);
+                this.x = randomX ? Math.random() * canvas.width : 0;
+                this.y = Math.random() * canvas.height;
+                this.vx = windSpeed + (Math.random() * 0.5); 
+                this.vy = 0;
+            }
+
+            update(aoa, thickness, windSpeed) {
+                // Adjust base speed smoothly if slider changes
+                if (this.x < canvas.width / 4) {
+                    this.vx += (windSpeed - this.vx) * 0.05;
+                }
+
+                const centerX = canvas.width / 2;
+                const centerY = canvas.height / 2;
+                const chordLength = 300;
+                
+                const angleRad = (aoa * Math.PI) / 180;
+                
+                let dx = this.x - centerX;
+                let dy = this.y - centerY;
+                
+                let rx = dx * Math.cos(-angleRad) - dy * Math.sin(-angleRad);
+                let ry = dx * Math.sin(-angleRad) + dy * Math.cos(-angleRad);
+
+                let speedMultiplier = 1;
+                let targetVy = 0;
+
+                if (rx > -chordLength/2 - 100 && rx < chordLength/2 + 100) {
+                    const airfoilThickRadius = (chordLength * (thickness / 100)) / 2;
+                    
+                    if (Math.abs(ry) < airfoilThickRadius * 3) {
+                        const distanceToCenter = Math.abs(ry);
+                        const pushForce = Math.max(0, (airfoilThickRadius * 2) - distanceToCenter);
+                        
+                        if (ry < 0) { 
+                            targetVy = -pushForce * 0.1;
+                            speedMultiplier = 1.5; 
+                            
+                            if (aoa > 15 && rx > -chordLength/4) {
+                                speedMultiplier = 0.5;
+                                targetVy += (Math.random() - 0.5) * (aoa - 10) * 0.5; 
+                                this.vx *= 0.9; 
+                            }
+                        } else { 
+                            targetVy = pushForce * 0.1;
+                            speedMultiplier = 0.9;
+                        }
+                    }
+                }
+
+                this.vy += (targetVy - this.vy) * 0.1;
+                
+                let finalVx = (this.vx * speedMultiplier) * Math.cos(angleRad) - this.vy * Math.sin(angleRad);
+                let finalVy = (this.vx * speedMultiplier) * Math.sin(angleRad) + this.vy * Math.cos(angleRad);
+
+                this.x += finalVx;
+                this.y += finalVy;
+
+                if (this.x > canvas.width || this.y < 0 || this.y > canvas.height) {
+                    this.reset();
+                }
+            }
+
+            draw(windSpeed) {
+                const speed = Math.sqrt(this.vx * this.vx + this.vy * this.vy);
+                
+                // Color scaling dynamic to wind speed
+                const speedRatio = speed / windSpeed;
+                let hue = 240 - ((speedRatio - 0.5) * 240); 
+                hue = Math.max(0, Math.min(240, hue)); // Clamp between 0 and 240
+
+                ctx.fillStyle = `hsl(${hue}, 100%, 60%)`;
+                
+                ctx.beginPath();
+                ctx.arc(this.x, this.y, 1.5, 0, Math.PI * 2);
+                ctx.fill();
+            }
+        }
+
+        // Initialize particles
+        for (let i = 0; i < numParticles; i++) {
+            particles.push(new Particle());
+        }
+
+        function drawAirfoil(thickness, aoa) {
+            const centerX = canvas.width / 2;
+            const centerY = canvas.height / 2;
+            const chordLength = 300;
+            const maxThickness = chordLength * (thickness / 100);
+            
+            ctx.save();
+            ctx.translate(centerX, centerY);
+            ctx.rotate((aoa * Math.PI) / 180);
+            
+            ctx.beginPath();
+            for (let i = 0; i <= chordLength; i++) {
+                let x = i - chordLength / 2;
+                let nx = i / chordLength; 
+                
+                let yt = 5 * maxThickness * (0.2969 * Math.sqrt(nx) - 0.1260 * nx - 0.3516 * Math.pow(nx, 2) + 0.2843 * Math.pow(nx, 3) - 0.1015 * Math.pow(nx, 4));
+                
+                if (i === 0) ctx.moveTo(x, -yt);
+                else ctx.lineTo(x, -yt);
+            }
+            for (let i = chordLength; i >= 0; i--) {
+                let x = i - chordLength / 2;
+                let nx = i / chordLength;
+                let yt = 5 * maxThickness * (0.2969 * Math.sqrt(nx) - 0.1260 * nx - 0.3516 * Math.pow(nx, 2) + 0.2843 * Math.pow(nx, 3) - 0.1015 * Math.pow(nx, 4));
+                ctx.lineTo(x, yt);
+            }
+            
+            ctx.closePath();
+            ctx.fillStyle = '#555';
+            ctx.fill();
+            ctx.strokeStyle = '#fff';
+            ctx.lineWidth = 2;
+            ctx.stroke();
+            ctx.restore();
+        }
+
+        function animate() {
+            ctx.fillStyle = 'rgba(0, 0, 0, 0.2)';
+            ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+            const currentAoA = parseFloat(aoaInput.value);
+            const currentThickness = parseFloat(thicknessInput.value);
+            const currentWindSpeed = parseFloat(windSpeedInput.value);
+            
+            aoaDisplay.textContent = currentAoA;
+            windSpeedDisplay.textContent = currentWindSpeed;
+
+            drawAirfoil(currentThickness, currentAoA);
+
+            particles.forEach(p => {
+                p.update(currentAoA, currentThickness, currentWindSpeed);
+                p.draw(currentWindSpeed);
+            });
+
+            requestAnimationFrame(animate);
+        }
+
+        animate();
+    </script>
+</body>
+</html>
