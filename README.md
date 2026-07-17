@@ -200,9 +200,9 @@ For questions regarding the research or repository:
 
 **Raghav Venkat Iyer**
 
-GitHub: *Your GitHub Profile*
+GitHub: RaghavVenkatIyer
 
-LinkedIn: *Your LinkedIn Profile*
+LinkedIn: https://www.linkedin.com/in/raghavvenkatiyer/
 
 ---
 
